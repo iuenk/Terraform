@@ -1,0 +1,64 @@
+trigger: none
+pr: none
+
+variables: 
+- group: terraform-azure
+
+pool:
+  vmImage: windows-latest
+steps:
+- task: TerraformInstaller@0
+  inputs:
+    terraformVersion: 'latest'
+- task: TerraformCLI@0
+  displayName: 'Terraform init task'
+  inputs:
+    command: 'init'
+    #commandOptions: '-reconfigure'
+    backendType: 'azurerm'
+    backendServiceArm: '$(customer)-automation-sp'
+    backendAzureRmResourceGroupName: '$(customer)-Storage-RG'
+    backendAzureRmStorageAccountName: '$(backendAzureRmStorageAccountName)'
+    backendAzureRmContainerName: 'terraformstate'
+    backendAzureRmKey: '$(backendAzureRmKey)'
+    allowTelemetryCollection: false
+    environmentServiceName: '$(customer)-automation-sp'
+    runAzLogin: true
+
+- task: TerraformCLI@0
+  displayName: 'Terraform validate task'
+  inputs:
+    command: 'validate'
+    allowTelemetryCollection: false
+
+- task: PowerShell@2
+  displayName: 'FLint validation'
+  inputs:
+    targetType: 'inline'
+    script: |
+      Set-ExecutionPolicy Bypass -Scope Process -Force
+      iex ((new-object net.webclient).DownloadString('https://chocolatey.org/install.ps1'))
+      choco install tflint -y
+      #initializing TFLint
+      tflint --init
+      #testing tf
+      tflint --config .\.tflint.hcl --loglevel info
+      
+- task: TerraformCLI@0
+  displayName: 'Terraform plan task'
+  inputs:
+    command: 'plan'
+    commandOptions : "--var-file=./default.tfvars -input=false -var tf_storage_key=$(backendAzureRmKey)"
+    environmentServiceName: '$(customer)-automation-sp'
+    runAzLogin: true
+    allowTelemetryCollection: false
+
+- task: TerraformCLI@0
+  displayName: 'Terraform apply task'
+  inputs:
+    command: 'apply'
+    commandOptions: "--var-file=./default.tfvars -input=false -var tf_storage_key=$(backendAzureRmKey)"
+    backendServiceArm:
+    environmentServiceName: '$(customer)-automation-sp'
+    runAzLogin: true
+    allowTelemetryCollection: false
